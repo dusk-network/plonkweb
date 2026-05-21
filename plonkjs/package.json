@@ -1,0 +1,16 @@
+{
+  "name": "plonkjs",
+  "version": "0.1.0",
+  "description": "JavaScript API for dusk-plonk.",
+  "type": "module",
+  "main": "src/index.mjs",
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

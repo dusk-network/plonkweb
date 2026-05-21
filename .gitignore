@@ -1,0 +1,5 @@
+target/
+Cargo.lock
+plonkjs/dist/
+node_modules/
+.DS_Store

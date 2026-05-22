@@ -18,7 +18,12 @@ export class PlonkJs {
     this.exports = instance.exports;
     this.memory = this.exports.memory;
 
-    for (const name of ["plonkweb_alloc", "plonkweb_free", "plonkweb_prove"]) {
+    for (const name of [
+      "plonkweb_alloc",
+      "plonkweb_free",
+      "plonkweb_prove",
+      "plonkweb_verify"
+    ]) {
       if (typeof this.exports[name] !== "function") {
         throw new Error(`wasm export missing: ${name}`);
       }
@@ -46,6 +51,19 @@ export class PlonkJs {
       proofHex: response.proof_hex,
       publicInputsHex: response.public_inputs_hex
     };
+  }
+
+  /**
+   * Verifies a proof using the loaded wasm artifact.
+   */
+  async verify(verifierKey, proof, publicInputs) {
+    const response = this.#callJson("plonkweb_verify", {
+      verifier_key_hex: bytesToHex(extractBytes(verifierKey, "verifierKey")),
+      proof_hex: bytesToHex(extractBytes(proof, "proof")),
+      public_inputs_hex: bytesToHex(extractBytes(publicInputs, "publicInputs"))
+    });
+
+    return response.verified === true;
   }
 
   #callJson(exportName, request) {
@@ -83,6 +101,11 @@ export async function loadPlonkJs(options = {}) {
 export async function prove(proverKey, options = {}) {
   const sdk = await getDefaultSdk(options.wasmPath);
   return sdk.prove(proverKey, options);
+}
+
+export async function verify(verifierKey, proof, publicInputs, options = {}) {
+  const sdk = await getDefaultSdk(options.wasmPath);
+  return sdk.verify(verifierKey, proof, publicInputs);
 }
 
 export function bytesToHex(bytes) {

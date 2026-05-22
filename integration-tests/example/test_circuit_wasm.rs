@@ -36,27 +36,27 @@ struct VerifyResponse {
     verified: bool,
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn plonkweb_alloc(len: usize) -> *mut u8 {
     plonkwasm::wasm::alloc(len)
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn plonkweb_free(ptr: *mut u8, len: usize) {
-    plonkwasm::wasm::free(ptr, len);
+    unsafe { plonkwasm::wasm::free(ptr, len) };
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn plonkweb_prove(request_ptr: *const u8, request_len: usize) -> u64 {
-    plonkwasm::wasm::respond_from_request(request_ptr, request_len, prove_test_circuit)
+    unsafe { plonkwasm::wasm::respond_from_request(request_ptr, request_len, prove_test_circuit) }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn plonkweb_verify(request_ptr: *const u8, request_len: usize) -> u64 {
-    plonkwasm::wasm::respond_from_request(request_ptr, request_len, verify_test_circuit)
+    unsafe { plonkwasm::wasm::respond_from_request(request_ptr, request_len, verify_test_circuit) }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn plonkweb_prove_bytes(
     prover_key_ptr: *const u8,
     prover_key_len: usize,
@@ -65,15 +65,13 @@ pub unsafe extern "C" fn plonkweb_prove_bytes(
     left: u64,
     right: u64,
 ) -> u64 {
-    plonkwasm::wasm::respond(prove_test_circuit_bytes(
-        core::slice::from_raw_parts(prover_key_ptr, prover_key_len),
-        core::slice::from_raw_parts(seed_ptr, seed_len),
-        left,
-        right,
-    ))
+    let prover_key = unsafe { core::slice::from_raw_parts(prover_key_ptr, prover_key_len) };
+    let seed = unsafe { core::slice::from_raw_parts(seed_ptr, seed_len) };
+
+    plonkwasm::wasm::respond(prove_test_circuit_bytes(prover_key, seed, left, right))
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn plonkweb_verify_bytes(
     verifier_key_ptr: *const u8,
     verifier_key_len: usize,
@@ -82,10 +80,15 @@ pub unsafe extern "C" fn plonkweb_verify_bytes(
     public_inputs_ptr: *const u8,
     public_inputs_len: usize,
 ) -> u64 {
+    let verifier_key = unsafe { core::slice::from_raw_parts(verifier_key_ptr, verifier_key_len) };
+    let proof = unsafe { core::slice::from_raw_parts(proof_ptr, proof_len) };
+    let public_inputs =
+        unsafe { core::slice::from_raw_parts(public_inputs_ptr, public_inputs_len) };
+
     plonkwasm::wasm::respond(verify_test_circuit_bytes(
-        core::slice::from_raw_parts(verifier_key_ptr, verifier_key_len),
-        core::slice::from_raw_parts(proof_ptr, proof_len),
-        core::slice::from_raw_parts(public_inputs_ptr, public_inputs_len),
+        verifier_key,
+        proof,
+        public_inputs,
     ))
 }
 

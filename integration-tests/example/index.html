@@ -204,7 +204,7 @@
             Right
             <input id="right" type="number" min="0" step="1" value="17">
           </label>
-          <button id="prove" type="button">Compute and verify proof</button>
+          <button id="prove" type="button" disabled>Compute and verify proof</button>
         </div>
 
         <div class="metrics" aria-live="polite">
@@ -264,7 +264,10 @@
 
       let plonkjsPromise;
       let keysPromise;
+      let initPromise;
       const textDecoder = new TextDecoder();
+
+      initPromise = initBenchmark();
 
       proveButton.addEventListener("click", async () => {
         proveButton.disabled = true;
@@ -280,10 +283,8 @@
         try {
           const left = readInteger(leftInput, "left");
           const right = readInteger(rightInput, "right");
-          const [plonkjs, keys] = await Promise.all([loadPlonkjs(), loadKeys()]);
+          const plonkjs = await initPromise;
           const seed = new Uint8Array(32).fill(9);
-          const proverKey = allocateWasmBytes(plonkjs, keys.proverKey);
-          const verifierKey = allocateWasmBytes(plonkjs, keys.verifierKey);
           const seedBytes = allocateWasmBytes(plonkjs, seed);
           let proofBytes;
           let publicInputsBytes;
@@ -295,8 +296,6 @@
 
             const startedAt = performance.now();
             const proofPacked = plonkjs.exports.plonkweb_prove_bytes(
-              proverKey.ptr,
-              proverKey.len,
               seedBytes.ptr,
               seedBytes.len,
               BigInt(left),
@@ -320,8 +319,6 @@
 
             const verifyStartedAt = performance.now();
             const verifyPacked = plonkjs.exports.plonkweb_verify_bytes(
-              verifierKey.ptr,
-              verifierKey.len,
               proofBytes.ptr,
               proofBytes.len,
               publicInputsBytes.ptr,
@@ -335,8 +332,6 @@
               ? "Proof computed and verified."
               : "Proof computed but verification failed.";
           } finally {
-            proverKey.free();
-            verifierKey.free();
             seedBytes.free();
             proofBytes?.free();
             publicInputsBytes?.free();
@@ -348,6 +343,30 @@
           proveButton.disabled = false;
         }
       });
+
+      async function initBenchmark() {
+        statusOutput.dataset.kind = "";
+        statusOutput.textContent = "Initializing benchmark...";
+
+        try {
+          const [plonkjs, keys] = await Promise.all([loadPlonkjs(), loadKeys()]);
+          threadCount.textContent = String(plonkjs.threadPoolSize);
+          statusOutput.textContent = "Deserializing proving and verification keys...";
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+
+          const startedAt = performance.now();
+          await plonkjs.init(keys.proverKey, keys.verifierKey);
+          const elapsedMs = performance.now() - startedAt;
+
+          statusOutput.textContent = `Ready. Initialized in ${elapsedMs.toFixed(2)} ms.`;
+          proveButton.disabled = false;
+          return plonkjs;
+        } catch (error) {
+          statusOutput.dataset.kind = "error";
+          statusOutput.textContent = error instanceof Error ? error.message : String(error);
+          throw error;
+        }
+      }
 
       function loadPlonkjs() {
         plonkjsPromise ??= loadPlonkJs({

@@ -13,7 +13,6 @@ struct JsProofFixture {
     left: u64,
     right: u64,
     product: u64,
-    verifier_key_hex: String,
     proof_hex: String,
     public_inputs_hex: String,
 }
@@ -33,7 +32,10 @@ fn rust_verifier_accepts_js_wasm_generated_proof() {
 
     assert_eq!(fixture.left * fixture.right, fixture.product);
 
-    let verifier_key = plonkwasm::wasm::decode_hex(&fixture.verifier_key_hex).unwrap();
+    let verifier_key_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../target/integration-test-fixtures/test-verifier-key.bin");
+    let verifier_key = std::fs::read(&verifier_key_path)
+        .unwrap_or_else(|err| panic!("failed to read {}: {err}", verifier_key_path.display()));
     let proof = plonkwasm::wasm::decode_hex(&fixture.proof_hex).unwrap();
     let public_inputs = plonkwasm::wasm::decode_hex(&fixture.public_inputs_hex).unwrap();
 

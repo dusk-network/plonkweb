@@ -16,8 +16,9 @@ const [proverKey, verifierKey] = await Promise.all([
   readFile(join(keysDir, keys.verifier_key_path))
 ]);
 const plonkjs = await loadPlonkJs({ wasmPath });
+await plonkjs.init(proverKey, verifierKey);
 
-const proof = await plonkjs.prove(proverKey, {
+const proof = await plonkjs.prove({
   seed: new Uint8Array(32).fill(9),
   inputs: {
     left: 13,
@@ -27,7 +28,7 @@ const proof = await plonkjs.prove(proverKey, {
 
 assert.equal(proof.publicInputs.length, 32);
 assert.equal(
-  await plonkjs.verify(verifierKey, proof.proof, proof.publicInputs),
+  await plonkjs.verify(proof.proof, proof.publicInputs),
   true
 );
 
@@ -35,7 +36,6 @@ const fixture = {
   left: 13,
   right: 17,
   product: 221,
-  verifier_key_hex: bytesToHex(verifierKey),
   proof_hex: bytesToHex(proof.proof),
   public_inputs_hex: bytesToHex(proof.publicInputs)
 };

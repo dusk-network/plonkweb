@@ -4,15 +4,19 @@
 //
 // Copyright (c) DUSK NETWORK. All rights reserved.
 
+use dusk_plonk::prelude::{Prover, Verifier};
 use plonk_integration_tests::test_circuit::TestCircuit;
 use serde::{Deserialize, Serialize};
+use std::sync::OnceLock;
 
 #[cfg(all(target_arch = "wasm32", feature = "wasm-rayon"))]
 pub use wasm_bindgen_rayon::init_thread_pool;
 
+static PROVER: OnceLock<Prover> = OnceLock::new();
+static VERIFIER: OnceLock<Verifier> = OnceLock::new();
+
 #[derive(Debug, Deserialize)]
 struct ProveRequest {
-    prover_key_hex: String,
     seed_hex: String,
     left: u64,
     right: u64,
@@ -26,7 +30,6 @@ struct ProveResponse {
 
 #[derive(Debug, Deserialize)]
 struct VerifyRequest {
-    verifier_key_hex: String,
     proof_hex: String,
     public_inputs_hex: String,
 }
@@ -34,6 +37,11 @@ struct VerifyRequest {
 #[derive(Debug, Serialize)]
 struct VerifyResponse {
     verified: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct InitResponse {
+    ready: bool,
 }
 
 #[unsafe(no_mangle)]
@@ -48,6 +56,23 @@ pub extern "C" fn plonkweb_alloc(len: usize) -> *mut u8 {
 /// and not already freed.
 pub unsafe extern "C" fn plonkweb_free(ptr: *mut u8, len: usize) {
     unsafe { plonkwasm::wasm::free(ptr, len) };
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+///
+/// Pointer and length pairs must describe valid readable key buffers for the
+/// duration of this call.
+pub unsafe extern "C" fn plonkweb_init(
+    prover_key_ptr: *const u8,
+    prover_key_len: usize,
+    verifier_key_ptr: *const u8,
+    verifier_key_len: usize,
+) -> u64 {
+    let prover_key = unsafe { core::slice::from_raw_parts(prover_key_ptr, prover_key_len) };
+    let verifier_key = unsafe { core::slice::from_raw_parts(verifier_key_ptr, verifier_key_len) };
+
+    plonkwasm::wasm::respond(init(prover_key, verifier_key))
 }
 
 #[unsafe(no_mangle)]
@@ -72,17 +97,14 @@ pub unsafe extern "C" fn plonkweb_verify(request_ptr: *const u8, request_len: us
 /// Pointer and length pairs must describe valid readable buffers for the duration
 /// of this call.
 pub unsafe extern "C" fn plonkweb_prove_bytes(
-    prover_key_ptr: *const u8,
-    prover_key_len: usize,
     seed_ptr: *const u8,
     seed_len: usize,
     left: u64,
     right: u64,
 ) -> u64 {
-    let prover_key = unsafe { core::slice::from_raw_parts(prover_key_ptr, prover_key_len) };
     let seed = unsafe { core::slice::from_raw_parts(seed_ptr, seed_len) };
 
-    plonkwasm::wasm::respond(prove_test_circuit_bytes(prover_key, seed, left, right))
+    plonkwasm::wasm::respond(prove_test_circuit_bytes(seed, left, right))
 }
 
 #[unsafe(no_mangle)]
@@ -91,44 +113,31 @@ pub unsafe extern "C" fn plonkweb_prove_bytes(
 /// Pointer and length pairs must describe valid readable buffers for the duration
 /// of this call.
 pub unsafe extern "C" fn plonkweb_verify_bytes(
-    verifier_key_ptr: *const u8,
-    verifier_key_len: usize,
     proof_ptr: *const u8,
     proof_len: usize,
     public_inputs_ptr: *const u8,
     public_inputs_len: usize,
 ) -> u64 {
-    let verifier_key = unsafe { core::slice::from_raw_parts(verifier_key_ptr, verifier_key_len) };
     let proof = unsafe { core::slice::from_raw_parts(proof_ptr, proof_len) };
     let public_inputs =
         unsafe { core::slice::from_raw_parts(public_inputs_ptr, public_inputs_len) };
 
-    plonkwasm::wasm::respond(verify_test_circuit_bytes(
-        verifier_key,
-        proof,
-        public_inputs,
-    ))
+    plonkwasm::wasm::respond(verify_test_circuit_bytes(proof, public_inputs))
 }
 
 fn prove_test_circuit(request: &[u8]) -> Result<ProveResponse, String> {
     let request: ProveRequest =
         serde_json::from_slice(request).map_err(|err| format!("invalid prove request: {err}"))?;
-    let prover_key = plonkwasm::wasm::decode_hex(&request.prover_key_hex)?;
     let seed = plonkwasm::wasm::decode_seed(&request.seed_hex)?;
-    prove_test_circuit_bytes(&prover_key, &seed, request.left, request.right)
+    prove_test_circuit_bytes(&seed, request.left, request.right)
 }
 
-fn prove_test_circuit_bytes(
-    prover_key: &[u8],
-    seed: &[u8],
-    left: u64,
-    right: u64,
-) -> Result<ProveResponse, String> {
+fn prove_test_circuit_bytes(seed: &[u8], left: u64, right: u64) -> Result<ProveResponse, String> {
     let seed: [u8; 32] = seed
         .try_into()
         .map_err(|_| format!("seed must be 32 bytes, got {}", seed.len()))?;
     let circuit = TestCircuit::new(left, right);
-    let proof = plonkwasm::prove(prover_key, seed, &circuit)?;
+    let proof = plonkwasm::prove(prover()?, seed, &circuit)?;
 
     Ok(ProveResponse {
         proof_hex: plonkwasm::wasm::encode_hex(&proof.proof),
@@ -139,19 +148,56 @@ fn prove_test_circuit_bytes(
 fn verify_test_circuit(request: &[u8]) -> Result<VerifyResponse, String> {
     let request: VerifyRequest =
         serde_json::from_slice(request).map_err(|err| format!("invalid verify request: {err}"))?;
-    let verifier_key = plonkwasm::wasm::decode_hex(&request.verifier_key_hex)?;
     let proof = plonkwasm::wasm::decode_hex(&request.proof_hex)?;
     let public_inputs = plonkwasm::wasm::decode_hex(&request.public_inputs_hex)?;
 
-    verify_test_circuit_bytes(&verifier_key, &proof, &public_inputs)
+    verify_test_circuit_bytes(&proof, &public_inputs)
 }
 
-fn verify_test_circuit_bytes(
-    verifier_key: &[u8],
-    proof: &[u8],
-    public_inputs: &[u8],
-) -> Result<VerifyResponse, String> {
-    plonkwasm::verify(verifier_key, proof, public_inputs)?;
+fn verify_test_circuit_bytes(proof: &[u8], public_inputs: &[u8]) -> Result<VerifyResponse, String> {
+    plonkwasm::verify(verifier()?, proof, public_inputs)?;
 
     Ok(VerifyResponse { verified: true })
+}
+
+fn init(prover_key: &[u8], verifier_key: &[u8]) -> Result<InitResponse, String> {
+    load_prover(prover_key)?;
+    load_verifier(verifier_key)?;
+    Ok(InitResponse { ready: true })
+}
+
+fn prover() -> Result<&'static Prover, String> {
+    PROVER
+        .get()
+        .ok_or_else(|| "plonkweb init must be called before prove".to_string())
+}
+
+fn verifier() -> Result<&'static Verifier, String> {
+    VERIFIER
+        .get()
+        .ok_or_else(|| "plonkweb init must be called before verify".to_string())
+}
+
+fn load_prover(prover_key: &[u8]) -> Result<&'static Prover, String> {
+    if let Some(prover) = PROVER.get() {
+        return Ok(prover);
+    }
+
+    let loaded = Prover::try_from_bytes(prover_key).map_err(|err| format!("{err:?}"))?;
+    PROVER
+        .set(loaded)
+        .map_err(|_| "prover key was initialized concurrently".to_string())?;
+    prover()
+}
+
+fn load_verifier(verifier_key: &[u8]) -> Result<&'static Verifier, String> {
+    if let Some(verifier) = VERIFIER.get() {
+        return Ok(verifier);
+    }
+
+    let loaded = Verifier::try_from_bytes(verifier_key).map_err(|err| format!("{err:?}"))?;
+    VERIFIER
+        .set(loaded)
+        .map_err(|_| "verifier key was initialized concurrently".to_string())?;
+    verifier()
 }

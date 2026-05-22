@@ -42,21 +42,35 @@ pub extern "C" fn plonkweb_alloc(len: usize) -> *mut u8 {
 }
 
 #[unsafe(no_mangle)]
+/// # Safety
+///
+/// `ptr` and `len` must describe a buffer previously returned by `plonkweb_alloc`
+/// and not already freed.
 pub unsafe extern "C" fn plonkweb_free(ptr: *mut u8, len: usize) {
     unsafe { plonkwasm::wasm::free(ptr, len) };
 }
 
 #[unsafe(no_mangle)]
+/// # Safety
+///
+/// `request_ptr` and `request_len` must describe a valid readable request buffer.
 pub unsafe extern "C" fn plonkweb_prove(request_ptr: *const u8, request_len: usize) -> u64 {
     unsafe { plonkwasm::wasm::respond_from_request(request_ptr, request_len, prove_test_circuit) }
 }
 
 #[unsafe(no_mangle)]
+/// # Safety
+///
+/// `request_ptr` and `request_len` must describe a valid readable request buffer.
 pub unsafe extern "C" fn plonkweb_verify(request_ptr: *const u8, request_len: usize) -> u64 {
     unsafe { plonkwasm::wasm::respond_from_request(request_ptr, request_len, verify_test_circuit) }
 }
 
 #[unsafe(no_mangle)]
+/// # Safety
+///
+/// Pointer and length pairs must describe valid readable buffers for the duration
+/// of this call.
 pub unsafe extern "C" fn plonkweb_prove_bytes(
     prover_key_ptr: *const u8,
     prover_key_len: usize,
@@ -72,6 +86,10 @@ pub unsafe extern "C" fn plonkweb_prove_bytes(
 }
 
 #[unsafe(no_mangle)]
+/// # Safety
+///
+/// Pointer and length pairs must describe valid readable buffers for the duration
+/// of this call.
 pub unsafe extern "C" fn plonkweb_verify_bytes(
     verifier_key_ptr: *const u8,
     verifier_key_len: usize,

@@ -8,11 +8,11 @@ build-wasm:
 	cp $(WASM_ARTIFACT) plonkjs/dist/plonkwasm.wasm
 
 test-rust:
-	cargo test --workspace
+	cargo test --workspace --release
 
 test-js:
 	npm --prefix plonkjs test
 
 test: test-rust test-js build-wasm
 	node integration-tests/generate-proof.mjs target/integration-test-fixtures/js-proof.json
-	cargo test -p plonk-integration-tests --test js_proof_verification -- --ignored
+	cargo test -p plonk-integration-tests --release --test js_proof_verification -- --ignored

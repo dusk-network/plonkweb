@@ -8,8 +8,8 @@ compute proofs in-browser.
 ## Layout
 
 - `plonkwasm`: Rust crate with the reusable proof helper API. Its core public
-  API is `prove()`, plus wasm ABI helpers for crates that link a concrete
-  circuit.
+  API is `prove()` and `verify()`, plus wasm ABI helpers for crates that link
+  a concrete circuit.
 - `plonkjs`: JavaScript package that loads a compatible wasm artifact and calls
   the exported proof API.
 - `integration-tests`: Test-only Rust crate containing integration testing.
@@ -46,6 +46,8 @@ const { proof, publicInputs } = await sdk.prove(keys.prover_key_hex, {
     right: 17
   }
 });
+
+const verified = await sdk.verify(keys.verifier_key_hex, proof, publicInputs);
 ```
 
 The wasm artifact must still include a concrete circuit. The generic

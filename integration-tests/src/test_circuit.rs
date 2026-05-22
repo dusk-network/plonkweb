@@ -43,7 +43,7 @@ impl Circuit for TestCircuit {
 
         let public_product = composer.append_public(self.product);
         let mut computed = dusk_plonk::prelude::Witness::default();
-        
+
         for _ in 0..TEST_CIRCUIT_MULTIPLICATIONS {
             let constraint = Constraint::new().mult(1).a(left).b(right);
             computed = composer.gate_mul(constraint);

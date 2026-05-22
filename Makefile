@@ -1,9 +1,13 @@
-.PHONY: build-wasm build-wasm-raw build-wasm-rayon serve-example test test-rust test-js
+.PHONY: cq build-wasm build-wasm-raw build-wasm-rayon serve-example test test-rust test-js
 
 WASM_ARTIFACT := target/wasm32-unknown-unknown/release/examples/test_circuit_wasm.wasm
 WASM_RAYON_MAX_MEMORY ?= 2147483648
 WASM_RAYON_RUSTFLAGS := -C target-feature=+atomics,+bulk-memory -C link-arg=--shared-memory -C link-arg=--import-memory -C link-arg=--max-memory=$(WASM_RAYON_MAX_MEMORY) -C link-arg=--export=__heap_base -C link-arg=--export=__wasm_init_tls -C link-arg=--export=__tls_size -C link-arg=--export=__tls_align -C link-arg=--export=__tls_base
 EXAMPLE_PORT ?= 8000
+
+cq:
+	cargo fmt --all -- --check
+	cargo clippy --workspace --all-targets -- -D warnings
 
 build-wasm: build-wasm-raw build-wasm-rayon
 

@@ -87,8 +87,9 @@ const plonkjs = await loadPlonkJs({
   modulePath: new URL("./plonkjs/dist/plonkwasm.js", import.meta.url),
   threads: true
 });
+await plonkjs.init(proverKey, verifierKey);
 
-const { proof, publicInputs } = await plonkjs.prove(proverKey, {
+const { proof, publicInputs } = await plonkjs.prove({
   seed: new Uint8Array(32).fill(9),
   inputs: {
     left: 13,
@@ -96,7 +97,7 @@ const { proof, publicInputs } = await plonkjs.prove(proverKey, {
   }
 });
 
-const verified = await plonkjs.verify(verifierKey, proof, publicInputs);
+const verified = await plonkjs.verify(proof, publicInputs);
 ```
 
 For the integration test wasm, `left` and `right` are circuit inputs and the

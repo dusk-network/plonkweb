@@ -21,6 +21,10 @@ const proof = await sdk.prove(keys.prover_key_hex, {
 });
 
 assert.equal(proof.publicInputs.length, 32);
+assert.equal(
+  await sdk.verify(keys.verifier_key_hex, proof.proof, proof.publicInputs),
+  true
+);
 
 const fixture = {
   left: 13,

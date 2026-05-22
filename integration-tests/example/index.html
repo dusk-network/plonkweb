@@ -124,7 +124,7 @@
 
       .metrics {
         display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 12px;
         margin: 20px 0;
       }
@@ -191,7 +191,7 @@
     <main>
       <header>
         <h1>Plonk proof benchmark</h1>
-        <p>Run the test circuit in WebAssembly and measure proof generation time in this browser.</p>
+        <p>Run the test circuit in WebAssembly and measure proof generation and verification time in this browser.</p>
       </header>
 
       <section class="panel" aria-label="Proof benchmark">
@@ -204,7 +204,7 @@
             Right
             <input id="right" type="number" min="0" step="1" value="17">
           </label>
-          <button id="prove" type="button">Compute proof</button>
+          <button id="prove" type="button">Compute and verify proof</button>
         </div>
 
         <div class="metrics" aria-live="polite">
@@ -215,6 +215,10 @@
           <div class="metric">
             <span>Public product</span>
             <strong id="product">-</strong>
+          </div>
+          <div class="metric">
+            <span>Verify time</span>
+            <strong id="verify-time">-</strong>
           </div>
           <div class="metric">
             <span>Proof size</span>
@@ -246,6 +250,7 @@
       const leftInput = document.querySelector("#left");
       const rightInput = document.querySelector("#right");
       const proofTime = document.querySelector("#proof-time");
+      const verifyTime = document.querySelector("#verify-time");
       const productOutput = document.querySelector("#product");
       const proofSize = document.querySelector("#proof-size");
       const proofOutput = document.querySelector("#proof");
@@ -260,6 +265,7 @@
         statusOutput.dataset.kind = "";
         statusOutput.textContent = "Preparing benchmark...";
         proofTime.textContent = "-";
+        verifyTime.textContent = "-";
         proofSize.textContent = "-";
         proofOutput.value = "";
         publicInputsOutput.value = "";
@@ -285,7 +291,22 @@
           proofSize.textContent = `${proof.proof.length} bytes`;
           proofOutput.value = proof.proofHex;
           publicInputsOutput.value = proof.publicInputsHex;
-          statusOutput.textContent = "Proof computed.";
+
+          statusOutput.textContent = "Verifying proof...";
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+
+          const verifyStartedAt = performance.now();
+          const verified = await sdk.verify(
+            keys.verifier_key_hex,
+            proof.proof,
+            proof.publicInputs
+          );
+          const verifyElapsedMs = performance.now() - verifyStartedAt;
+
+          verifyTime.textContent = `${verifyElapsedMs.toFixed(2)} ms`;
+          statusOutput.textContent = verified
+            ? "Proof computed and verified."
+            : "Proof computed but verification failed.";
         } catch (error) {
           statusOutput.dataset.kind = "error";
           statusOutput.textContent = error instanceof Error ? error.message : String(error);

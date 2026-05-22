@@ -12,6 +12,7 @@ use rand_core::SeedableRng;
 
 const TRANSCRIPT_LABEL: &[u8] = b"plonkweb-test-v1";
 const TEST_CIRCUIT_CAPACITY: usize = 1 << 8;
+const TEST_CIRCUIT_MULTIPLICATIONS: usize = 1;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct TestCircuit {
@@ -40,10 +41,13 @@ impl Circuit for TestCircuit {
         let left = composer.append_witness(self.left);
         let right = composer.append_witness(self.right);
 
-        let constraint = Constraint::new().mult(1).a(left).b(right);
-        let computed = composer.gate_mul(constraint);
         let public_product = composer.append_public(self.product);
-        composer.assert_equal(computed, public_product);
+
+        for _ in 0..TEST_CIRCUIT_MULTIPLICATIONS {
+            let constraint = Constraint::new().mult(1).a(left).b(right);
+            let computed = composer.gate_mul(constraint);
+            composer.assert_equal(computed, public_product);
+        }
 
         Ok(())
     }

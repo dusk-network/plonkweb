@@ -1,7 +1,3 @@
-import { randomBytes } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
-
 const DEFAULT_WASM_URL = new URL("../dist/plonkwasm.wasm", import.meta.url);
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
@@ -119,7 +115,11 @@ async function getDefaultSdk(wasmPath) {
 
 async function loadWasmBytes(wasmPath) {
   const url = wasmPath instanceof URL ? wasmPath : new URL(wasmPath, import.meta.url);
-  if (url.protocol === "file:") {
+  if (url.protocol === "file:" && isNodeRuntime()) {
+    const [{ readFile }, { fileURLToPath }] = await Promise.all([
+      import("node:fs/promises"),
+      import("node:url")
+    ]);
     return readFile(fileURLToPath(url));
   }
 
@@ -132,7 +132,15 @@ async function loadWasmBytes(wasmPath) {
 
 async function normalizeSeed(seed) {
   if (seed == null) {
-    return randomBytes(32);
+    const bytes = new Uint8Array(32);
+    if (globalThis.crypto?.getRandomValues) {
+      globalThis.crypto.getRandomValues(bytes);
+      return bytes;
+    }
+
+    const { randomBytes } = await import("node:crypto");
+    bytes.set(randomBytes(32));
+    return bytes;
   }
 
   const bytes = extractBytes(seed, "seed");
@@ -166,4 +174,8 @@ function normalizeInputs(inputs) {
     throw new Error("inputs must be an object");
   }
   return inputs;
+}
+
+function isNodeRuntime() {
+  return typeof process !== "undefined" && Boolean(process.versions?.node);
 }

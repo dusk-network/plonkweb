@@ -35,6 +35,7 @@ export class PlonkJs {
     for (const name of [
       "plonkweb_alloc",
       "plonkweb_free",
+      "plonkweb_init",
       "plonkweb_prove",
       "plonkweb_verify"
     ]) {
@@ -45,24 +46,46 @@ export class PlonkJs {
   }
 
   /**
+   * Loads circuit-specific proving and verification keys into wasm memory.
+   */
+  async init(proverKey, verifierKey) {
+    const proverKeyAllocation = this.#allocBytes(extractBytes(proverKey, "proverKey"));
+    const verifierKeyAllocation = this.#allocBytes(extractBytes(verifierKey, "verifierKey"));
+
+    try {
+      return this.#decodePackedResponse(
+        this.exports.plonkweb_init(
+          proverKeyAllocation.ptr,
+          proverKeyAllocation.len,
+          verifierKeyAllocation.ptr,
+          verifierKeyAllocation.len
+        )
+      );
+    } finally {
+      this.exports.plonkweb_free(proverKeyAllocation.ptr, proverKeyAllocation.len);
+      this.exports.plonkweb_free(verifierKeyAllocation.ptr, verifierKeyAllocation.len);
+    }
+  }
+
+  /**
    * Computes a proof using the loaded wasm artifact.
    *
    * `inputs` is forwarded to the circuit-specific wasm wrapper, so its shape is
    * defined by that wasm binary rather than by this JavaScript package.
    */
-  async prove(proverKey, options = {}) {
+  async prove(options = {}) {
+    options = normalizeOptionsObject(options, "prove options");
     const seed = await normalizeSeed(options.seed);
     const inputs = normalizeInputs(options.inputs);
 
     if (typeof this.exports.plonkweb_prove_bytes === "function") {
       const binaryInputs = normalizeBinaryTestInputs(inputs);
       if (binaryInputs) {
-        return this.#proveBytes(proverKey, seed, binaryInputs);
+        return this.#proveBytes(seed, binaryInputs);
       }
     }
 
     const request = {
-      prover_key_hex: extractHex(proverKey, "proverKey"),
       seed_hex: bytesToHex(seed),
       ...inputs
     };
@@ -73,14 +96,13 @@ export class PlonkJs {
   /**
    * Verifies a proof using the loaded wasm artifact.
    */
-  async verify(verifierKey, proof, publicInputs) {
+  async verify(proof, publicInputs) {
     if (typeof this.exports.plonkweb_verify_bytes === "function") {
-      const response = this.#verifyBytes(verifierKey, proof, publicInputs);
+      const response = this.#verifyBytes(proof, publicInputs);
       return response.verified === true;
     }
 
     const response = this.#callJson("plonkweb_verify", {
-      verifier_key_hex: extractHex(verifierKey, "verifierKey"),
       proof_hex: extractHex(proof, "proof"),
       public_inputs_hex: extractHex(publicInputs, "publicInputs")
     });
@@ -88,16 +110,12 @@ export class PlonkJs {
     return response.verified === true;
   }
 
-  #proveBytes(proverKey, seed, inputs) {
-    const proverKeyBytes = extractBytes(proverKey, "proverKey");
-    const proverKeyAllocation = this.#allocBytes(proverKeyBytes);
+  #proveBytes(seed, inputs) {
     const seedAllocation = this.#allocBytes(seed);
 
     try {
       const response = this.#decodePackedResponse(
         this.exports.plonkweb_prove_bytes(
-          proverKeyAllocation.ptr,
-          proverKeyAllocation.len,
           seedAllocation.ptr,
           seedAllocation.len,
           BigInt(inputs.left),
@@ -106,13 +124,11 @@ export class PlonkJs {
       );
       return proofFromResponse(response);
     } finally {
-      this.exports.plonkweb_free(proverKeyAllocation.ptr, proverKeyAllocation.len);
       this.exports.plonkweb_free(seedAllocation.ptr, seedAllocation.len);
     }
   }
 
-  #verifyBytes(verifierKey, proof, publicInputs) {
-    const verifierKeyAllocation = this.#allocBytes(extractBytes(verifierKey, "verifierKey"));
+  #verifyBytes(proof, publicInputs) {
     const proofAllocation = this.#allocBytes(extractBytes(proof, "proof"));
     const publicInputsAllocation = this.#allocBytes(
       extractBytes(publicInputs, "publicInputs")
@@ -121,8 +137,6 @@ export class PlonkJs {
     try {
       return this.#decodePackedResponse(
         this.exports.plonkweb_verify_bytes(
-          verifierKeyAllocation.ptr,
-          verifierKeyAllocation.len,
           proofAllocation.ptr,
           proofAllocation.len,
           publicInputsAllocation.ptr,
@@ -130,7 +144,6 @@ export class PlonkJs {
         )
       );
     } finally {
-      this.exports.plonkweb_free(verifierKeyAllocation.ptr, verifierKeyAllocation.len);
       this.exports.plonkweb_free(proofAllocation.ptr, proofAllocation.len);
       this.exports.plonkweb_free(publicInputsAllocation.ptr, publicInputsAllocation.len);
     }
@@ -181,14 +194,22 @@ export async function loadPlonkJs(options = {}) {
   return PlonkJs.load(options);
 }
 
-export async function prove(proverKey, options = {}) {
+export async function init(proverKey, verifierKey, options = {}) {
+  options = normalizeOptionsObject(options, "init options");
   const plonkjs = await getDefaultPlonkJs(options);
-  return plonkjs.prove(proverKey, options);
+  return plonkjs.init(proverKey, verifierKey);
 }
 
-export async function verify(verifierKey, proof, publicInputs, options = {}) {
+export async function prove(options = {}) {
+  options = normalizeOptionsObject(options, "prove options");
   const plonkjs = await getDefaultPlonkJs(options);
-  return plonkjs.verify(verifierKey, proof, publicInputs);
+  return plonkjs.prove(options);
+}
+
+export async function verify(proof, publicInputs, options = {}) {
+  options = normalizeOptionsObject(options, "verify options");
+  const plonkjs = await getDefaultPlonkJs(options);
+  return plonkjs.verify(proof, publicInputs);
 }
 
 export function bytesToHex(bytes) {
@@ -326,6 +347,16 @@ function hasCustomLoadOptions(options) {
       options?.threadPoolSize != null ||
       options?.threadStackSize != null
   );
+}
+
+function normalizeOptionsObject(options, name) {
+  if (options == null) {
+    return {};
+  }
+  if (typeof options !== "object" || Array.isArray(options)) {
+    throw new Error(`${name} must be an object`);
+  }
+  return options;
 }
 
 function normalizeThreadPoolSize(threadPoolSize) {

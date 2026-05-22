@@ -42,13 +42,14 @@ impl Circuit for TestCircuit {
         let right = composer.append_witness(self.right);
 
         let public_product = composer.append_public(self.product);
-
+        let mut computed = dusk_plonk::prelude::Witness::default();
+        
         for _ in 0..TEST_CIRCUIT_MULTIPLICATIONS {
             let constraint = Constraint::new().mult(1).a(left).b(right);
-            let computed = composer.gate_mul(constraint);
-            composer.assert_equal(computed, public_product);
+            computed = composer.gate_mul(constraint);
         }
 
+        composer.assert_equal(computed, public_product);
         Ok(())
     }
 }
@@ -70,22 +71,24 @@ mod tests {
 
     #[derive(Debug, Serialize)]
     struct TestKeysFixture {
-        prover_key_hex: String,
-        verifier_key_hex: String,
+        prover_key_path: &'static str,
+        verifier_key_path: &'static str,
     }
 
     #[test]
     fn write_test_keys_fixture() {
         let (prover_key, verifier_key) = super::compile_test_keys([7; 32]).unwrap();
         let fixture = TestKeysFixture {
-            prover_key_hex: plonkwasm::wasm::encode_hex(&prover_key),
-            verifier_key_hex: plonkwasm::wasm::encode_hex(&verifier_key),
+            prover_key_path: "test-prover-key.bin",
+            verifier_key_path: "test-verifier-key.bin",
         };
         let fixture_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../target/integration-test-fixtures/test-keys.json");
         let fixture_dir = fixture_path.parent().unwrap();
 
         std::fs::create_dir_all(fixture_dir).unwrap();
+        std::fs::write(fixture_dir.join(fixture.prover_key_path), prover_key).unwrap();
+        std::fs::write(fixture_dir.join(fixture.verifier_key_path), verifier_key).unwrap();
         std::fs::write(
             fixture_path,
             format!("{}\n", serde_json::to_string_pretty(&fixture).unwrap()),

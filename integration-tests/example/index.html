@@ -224,6 +224,10 @@
             <span>Proof size</span>
             <strong id="proof-size">-</strong>
           </div>
+          <div class="metric">
+            <span>Rayon threads</span>
+            <strong id="thread-count">-</strong>
+          </div>
         </div>
 
         <div class="output">
@@ -242,9 +246,9 @@
     </main>
 
     <script type="module">
-      import { loadPlonkJs } from "../../plonkjs/src/index.mjs";
+      import { hexToBytes, loadPlonkJs } from "../../plonkjs/src/index.mjs";
 
-      const wasmPath = new URL("../../plonkjs/dist/plonkwasm.wasm", import.meta.url);
+      const wasmModulePath = new URL("../../plonkjs/dist/plonkwasm.js", import.meta.url);
       const keysPath = new URL("../../target/integration-test-fixtures/test-keys.json", import.meta.url);
       const proveButton = document.querySelector("#prove");
       const leftInput = document.querySelector("#left");
@@ -253,12 +257,14 @@
       const verifyTime = document.querySelector("#verify-time");
       const productOutput = document.querySelector("#product");
       const proofSize = document.querySelector("#proof-size");
+      const threadCount = document.querySelector("#thread-count");
       const proofOutput = document.querySelector("#proof");
       const publicInputsOutput = document.querySelector("#public-inputs");
       const statusOutput = document.querySelector("#status");
 
-      let sdkPromise;
+      let plonkjsPromise;
       let keysPromise;
+      const textDecoder = new TextDecoder();
 
       proveButton.addEventListener("click", async () => {
         proveButton.disabled = true;
@@ -267,46 +273,74 @@
         proofTime.textContent = "-";
         verifyTime.textContent = "-";
         proofSize.textContent = "-";
+        threadCount.textContent = "-";
         proofOutput.value = "";
         publicInputsOutput.value = "";
 
         try {
           const left = readInteger(leftInput, "left");
           const right = readInteger(rightInput, "right");
-          const [sdk, keys] = await Promise.all([loadSdk(), loadKeys()]);
+          const [plonkjs, keys] = await Promise.all([loadPlonkjs(), loadKeys()]);
           const seed = new Uint8Array(32).fill(9);
+          const proverKey = allocateWasmBytes(plonkjs, keys.proverKey);
+          const verifierKey = allocateWasmBytes(plonkjs, keys.verifierKey);
+          const seedBytes = allocateWasmBytes(plonkjs, seed);
+          let proofBytes;
+          let publicInputsBytes;
+          threadCount.textContent = String(plonkjs.threadPoolSize);
 
-          statusOutput.textContent = "Computing proof...";
-          await new Promise((resolve) => requestAnimationFrame(resolve));
+          try {
+            statusOutput.textContent = "Computing proof...";
+            await new Promise((resolve) => requestAnimationFrame(resolve));
 
-          const startedAt = performance.now();
-          const proof = await sdk.prove(keys.prover_key_hex, {
-            seed,
-            inputs: { left, right }
-          });
-          const elapsedMs = performance.now() - startedAt;
+            const startedAt = performance.now();
+            const proofPacked = plonkjs.exports.plonkweb_prove_bytes(
+              proverKey.ptr,
+              proverKey.len,
+              seedBytes.ptr,
+              seedBytes.len,
+              BigInt(left),
+              BigInt(right)
+            );
+            const elapsedMs = performance.now() - startedAt;
+            const proofResponse = decodePackedResponse(plonkjs, proofPacked);
+            const proof = proofFromResponse(proofResponse);
 
-          proofTime.textContent = `${elapsedMs.toFixed(2)} ms`;
-          productOutput.textContent = String(left * right);
-          proofSize.textContent = `${proof.proof.length} bytes`;
-          proofOutput.value = proof.proofHex;
-          publicInputsOutput.value = proof.publicInputsHex;
+            proofTime.textContent = `${elapsedMs.toFixed(2)} ms`;
+            productOutput.textContent = String(left * right);
+            proofSize.textContent = `${proof.proof.length} bytes`;
+            proofOutput.value = proof.proofHex;
+            publicInputsOutput.value = proof.publicInputsHex;
 
-          statusOutput.textContent = "Verifying proof...";
-          await new Promise((resolve) => requestAnimationFrame(resolve));
+            proofBytes = allocateWasmBytes(plonkjs, proof.proof);
+            publicInputsBytes = allocateWasmBytes(plonkjs, proof.publicInputs);
 
-          const verifyStartedAt = performance.now();
-          const verified = await sdk.verify(
-            keys.verifier_key_hex,
-            proof.proof,
-            proof.publicInputs
-          );
-          const verifyElapsedMs = performance.now() - verifyStartedAt;
+            statusOutput.textContent = "Verifying proof...";
+            await new Promise((resolve) => requestAnimationFrame(resolve));
 
-          verifyTime.textContent = `${verifyElapsedMs.toFixed(2)} ms`;
-          statusOutput.textContent = verified
-            ? "Proof computed and verified."
-            : "Proof computed but verification failed.";
+            const verifyStartedAt = performance.now();
+            const verifyPacked = plonkjs.exports.plonkweb_verify_bytes(
+              verifierKey.ptr,
+              verifierKey.len,
+              proofBytes.ptr,
+              proofBytes.len,
+              publicInputsBytes.ptr,
+              publicInputsBytes.len
+            );
+            const verifyElapsedMs = performance.now() - verifyStartedAt;
+            const verifyResponse = decodePackedResponse(plonkjs, verifyPacked);
+
+            verifyTime.textContent = `${verifyElapsedMs.toFixed(2)} ms`;
+            statusOutput.textContent = verifyResponse.verified
+              ? "Proof computed and verified."
+              : "Proof computed but verification failed.";
+          } finally {
+            proverKey.free();
+            verifierKey.free();
+            seedBytes.free();
+            proofBytes?.free();
+            publicInputsBytes?.free();
+          }
         } catch (error) {
           statusOutput.dataset.kind = "error";
           statusOutput.textContent = error instanceof Error ? error.message : String(error);
@@ -315,21 +349,81 @@
         }
       });
 
-      function loadSdk() {
-        sdkPromise ??= loadPlonkJs({ wasmPath });
-        return sdkPromise;
+      function loadPlonkjs() {
+        plonkjsPromise ??= loadPlonkJs({
+          modulePath: wasmModulePath,
+          threads: true
+        });
+        return plonkjsPromise;
       }
 
-      async function loadKeys() {
+      function loadKeys() {
         keysPromise ??= fetch(keysPath).then(async (response) => {
           if (!response.ok) {
             throw new Error(
-              "Could not load test keys. Run `cargo test --workspace --release` from the repo root and serve the repo over HTTP."
+              "Could not load test keys. Run `make serve-example` from the repo root."
             );
           }
-          return response.json();
+          const keys = await response.json();
+          const keysDir = new URL(".", keysPath);
+          const [proverKey, verifierKey] = await Promise.all([
+            fetchBytes(new URL(keys.prover_key_path, keysDir), "prover key"),
+            fetchBytes(new URL(keys.verifier_key_path, keysDir), "verifier key")
+          ]);
+          return { proverKey, verifierKey };
         });
         return keysPromise;
+      }
+
+      async function fetchBytes(url, name) {
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`Could not load ${name}. Run \`make serve-example\` from the repo root.`);
+        }
+        return new Uint8Array(await response.arrayBuffer());
+      }
+
+      function allocateWasmBytes(plonkjs, bytes) {
+        const ptr = plonkjs.exports.plonkweb_alloc(bytes.length);
+        new Uint8Array(plonkjs.memory.buffer, ptr, bytes.length).set(bytes);
+        return {
+          ptr,
+          len: bytes.length,
+          free() {
+            plonkjs.exports.plonkweb_free(ptr, bytes.length);
+          }
+        };
+      }
+
+      function decodePackedResponse(plonkjs, packed) {
+        packed = BigInt(packed);
+        const responsePtr = Number(packed >> 32n);
+        const responseLen = Number(packed & 0xffffffffn);
+        const responseBytes = new Uint8Array(plonkjs.memory.buffer, responsePtr, responseLen);
+        const responseJson = textDecoder.decode(copyIfShared(responseBytes));
+        plonkjs.exports.plonkweb_free(responsePtr, responseLen);
+
+        const response = JSON.parse(responseJson);
+        if (!response.ok) {
+          throw new Error(response.error ?? "wasm call failed");
+        }
+        return response.result;
+      }
+
+      function copyIfShared(bytes) {
+        if (typeof SharedArrayBuffer !== "undefined" && bytes.buffer instanceof SharedArrayBuffer) {
+          return bytes.slice();
+        }
+        return bytes;
+      }
+
+      function proofFromResponse(response) {
+        return {
+          proof: hexToBytes(response.proof_hex),
+          publicInputs: hexToBytes(response.public_inputs_hex),
+          proofHex: response.proof_hex,
+          publicInputsHex: response.public_inputs_hex
+        };
       }
 
       function readInteger(input, name) {

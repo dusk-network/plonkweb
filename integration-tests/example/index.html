@@ -324,7 +324,7 @@
         keysPromise ??= fetch(keysPath).then(async (response) => {
           if (!response.ok) {
             throw new Error(
-              "Could not load test keys. Run `cargo test --workspace` from the repo root and serve the repo over HTTP."
+              "Could not load test keys. Run `cargo test --workspace --release` from the repo root and serve the repo over HTTP."
             );
           }
           return response.json();

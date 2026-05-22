@@ -24,7 +24,7 @@ build-wasm-rayon:
 	RUSTFLAGS="$(WASM_RAYON_RUSTFLAGS)" rustup run nightly cargo build -p plonk-integration-tests --release --target wasm32-unknown-unknown --example test_circuit_wasm --features wasm-rayon -Z build-std=panic_abort,std
 	wasm-bindgen --target web --out-dir plonkjs/dist --out-name plonkwasm --no-typescript --keep-lld-exports $(WASM_ARTIFACT)
 
-serve-example: test-rust build-wasm
+serve-example: build-keys build-wasm
 	node integration-tests/example/server.mjs $(EXAMPLE_PORT)
 
 test-rust:
@@ -33,6 +33,6 @@ test-rust:
 test-js:
 	npm --prefix plonkjs test
 
-test: test-rust test-js build-wasm
+test: test-rust test-js build-keys build-wasm
 	node integration-tests/generate-proof.mjs target/integration-test-fixtures/js-proof.json
 	cargo test -p plonk-integration-tests --release --test js_proof_verification -- --ignored

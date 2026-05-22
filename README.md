@@ -1,32 +1,51 @@
 # PlonkWeb
 
-JavaScript API and WebAssembly wrapper for `dusk-plonk`, meant to
-compute proofs in-browser.
+JavaScript and WebAssembly tooling for generating and verifying
+[`dusk-plonk`](https://crates.io/crates/dusk-plonk) proofs in the browser.
 
-**DISCLAIMER:** this project is currently unstable, use at your own risk.
+> ⚠️ **DISCLAIMER:** this code is experimental, and thus, unstable. Use at
+> your own risk.
 
-## Layout
+## 📦 Workspace Layout
 
-- `plonkwasm`: Rust crate with the reusable proof helper API. Its core public
-  API is `prove()` and `verify()`, plus wasm ABI helpers for crates that link
-  a concrete circuit.
-- `plonkjs`: JavaScript package that loads a compatible wasm artifact and calls
-  the exported proof API.
-- `integration-tests`: Test-only Rust crate containing integration testing.
+- [PlonkWasm](plonkwasm): a Rust crate with reusable proof, verification, serialization,
+  and wasm ABI helpers.
+- [PlonkJS](plonkjs): a JavaScript loader that calls the exported wasm proof API.
+- [integration-tests](integration-tests): a test crate that links a concrete circuit, builds the
+  wasm artifact, and verifies the JavaScript proof flow from Rust.
 
-## Test
+## 🚀 Quick Start
 
-To execute all the tests, simply run:
+Run the full test flow:
 
 ```sh
 make test
 ```
 
-The integration test generates keys for `TestCircuit`, builds the test wasm,
-computes a proof through `plonkjs`, serializes the proof bytes, and verifies
-them with the Rust verifier from `dusk-plonk`.
+That command:
 
-To run the browser benchmark with wasm Rayon enabled, use:
+1. Generates prover and verifier keys for the integration test circuit.
+2. Builds the test wasm artifact.
+3. Computes a proof through `plonkjs`.
+4. Verifies the serialized proof with the Rust verifier from `dusk-plonk`.
+
+## 🧪 Rust and JavaScript Checks
+
+Run only the Rust tests:
+
+```sh
+make test-rust
+```
+
+Build the raw wasm artifact used by Node tests:
+
+```sh
+make build-wasm-raw
+```
+
+## ⚡ WebApp Example
+
+Run the browser benchmark/example with wasm Rayon enabled:
 
 ```sh
 make serve-example
@@ -35,12 +54,20 @@ make serve-example
 This builds the raw wasm used by Node tests plus the wasm-bindgen/Rayon browser
 artifact, then serves the example with the COOP/COEP headers required by
 `SharedArrayBuffer` and WebAssembly threads.
-The threaded wasm build expects a nightly Rust toolchain with `rust-src` and the
-`wasm-bindgen` CLI available on `PATH`.
-The shared-memory maximum defaults to 2 GiB; override it for larger circuits
-with `WASM_RAYON_MAX_MEMORY=<bytes> make build-wasm-rayon`.
 
-## JavaScript API Shape
+The threaded wasm build currently expects:
+
+- a nightly Rust toolchain with `rust-src`
+- the `wasm-bindgen` CLI on `PATH`
+- browser support for `SharedArrayBuffer`
+
+The shared-memory maximum defaults to 2 GiB. Override it for larger circuits:
+
+```sh
+WASM_RAYON_MAX_MEMORY=<bytes> make build-wasm-rayon
+```
+
+## 🌐 JavaScript API Shape
 
 ```js
 import { readFile } from "node:fs/promises";
@@ -48,14 +75,14 @@ import { dirname, join } from "node:path";
 import { loadPlonkJs } from "./plonkjs/src/index.mjs";
 
 const keysPath = "target/integration-test-fixtures/test-keys.json";
-const keys = JSON.parse(
-  await readFile(keysPath, "utf8")
-);
+const keys = JSON.parse(await readFile(keysPath, "utf8"));
 const keysDir = dirname(keysPath);
+
 const [proverKey, verifierKey] = await Promise.all([
   readFile(join(keysDir, keys.prover_key_path)),
   readFile(join(keysDir, keys.verifier_key_path))
 ]);
+
 const plonkjs = await loadPlonkJs({
   modulePath: new URL("./plonkjs/dist/plonkwasm.js", import.meta.url),
   threads: true
@@ -72,7 +99,10 @@ const { proof, publicInputs } = await plonkjs.prove(proverKey, {
 const verified = await plonkjs.verify(verifierKey, proof, publicInputs);
 ```
 
-The wasm artifact must still include a concrete circuit. The generic
-`plonkwasm` crate supplies proof plumbing; the circuit is linked by the crate
-that builds the wasm binary. For the integration test wasm, `left` and `right`
-are the circuit inputs and the public input is their product.
+For the integration test wasm, `left` and `right` are circuit inputs and the
+public input is their product.
+
+## 📜 License
+
+This project is licensed under the Mozilla Public License Version 2.0
+(`MPL-2.0`). See [LICENSE](LICENSE) for the full license text.

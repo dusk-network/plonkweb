@@ -1,5 +1,8 @@
 # PlonkWeb
 
+[![Repository](https://img.shields.io/badge/github-plonkweb-blueviolet?logo=github)](https://github.com/dusk-network/plonkweb)
+[![CI](https://github.com/dusk-network/plonkweb/actions/workflows/ci.yml/badge.svg)](https://github.com/dusk-network/plonkweb/actions/workflows/ci.yml)
+
 JavaScript and WebAssembly tooling for generating and verifying
 [`dusk-plonk`](https://crates.io/crates/dusk-plonk) proofs in the browser.
 

@@ -1,0 +1,59 @@
+on:
+  pull_request:
+  push:
+    branches: main
+
+name: Continuous Integration
+
+jobs:
+  code-quality:
+    name: Code quality / Run make target
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
+      - name: Install Rust components
+        run: rustup component add rustfmt clippy
+      - name: Run code quality
+        run: make cq
+
+  test-rust:
+    name: Run Rust tests / Run make target
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
+      - name: Install Rust components
+        run: rustup component add rustfmt clippy
+      - name: Run Rust tests
+        run: make test-rust
+
+  test-wasm:
+    name: Run WebAssembly tests
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
+      - name: Install Rust components
+        run: rustup component add rustfmt clippy
+      - name: Install nightly Rust
+        run: rustup toolchain install nightly --profile minimal --component rust-src --target wasm32-unknown-unknown
+      - name: Install wasm-bindgen
+        run: |
+          version="$(cargo tree -p plonk-integration-tests --target wasm32-unknown-unknown --features wasm-rayon | sed -n 's/.*wasm-bindgen v\([0-9.]*\).*/\1/p' | head -n1)"
+          test -n "$version"
+          cargo install wasm-bindgen-cli --version "$version" --locked
+      - name: Run WebAssembly tests
+        run: make test

@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>PlonkWeb Browser Benchmark</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f6f7f9;
+        --surface: #ffffff;
+        --text: #18202a;
+        --muted: #647181;
+        --line: #d8dee6;
+        --accent: #0f766e;
+        --accent-strong: #0b5f59;
+        --danger: #b42318;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #11151a;
+          --surface: #181e25;
+          --text: #edf2f7;
+          --muted: #a6b0bd;
+          --line: #2e3742;
+          --accent: #2dd4bf;
+          --accent-strong: #5eead4;
+          --danger: #f97066;
+        }
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        line-height: 1.5;
+      }
+
+      main {
+        width: min(960px, calc(100% - 32px));
+        margin: 40px auto;
+      }
+
+      header {
+        margin-bottom: 24px;
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: clamp(1.75rem, 4vw, 2.75rem);
+        line-height: 1.08;
+        letter-spacing: 0;
+      }
+
+      p {
+        margin: 0;
+        color: var(--muted);
+      }
+
+      .panel {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface);
+        padding: 20px;
+      }
+
+      .controls {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 160px)) minmax(180px, auto);
+        gap: 12px;
+        align-items: end;
+      }
+
+      label {
+        display: grid;
+        gap: 6px;
+        color: var(--muted);
+        font-size: 0.875rem;
+        font-weight: 600;
+      }
+
+      input,
+      textarea {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: transparent;
+        color: var(--text);
+        font: inherit;
+      }
+
+      input {
+        height: 42px;
+        padding: 0 12px;
+      }
+
+      button {
+        height: 42px;
+        border: 0;
+        border-radius: 6px;
+        background: var(--accent);
+        color: #ffffff;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      button:hover {
+        background: var(--accent-strong);
+      }
+
+      button:disabled {
+        cursor: wait;
+        opacity: 0.68;
+      }
+
+      .metrics {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+        margin: 20px 0;
+      }
+
+      .metric {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 14px;
+      }
+
+      .metric span {
+        display: block;
+        color: var(--muted);
+        font-size: 0.8rem;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+
+      .metric strong {
+        display: block;
+        margin-top: 4px;
+        font-size: 1.5rem;
+        line-height: 1.2;
+      }
+
+      .output {
+        display: grid;
+        gap: 12px;
+      }
+
+      textarea {
+        min-height: 160px;
+        resize: vertical;
+        padding: 12px;
+        font-family:
+          "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+        font-size: 0.86rem;
+        line-height: 1.45;
+      }
+
+      .status {
+        min-height: 24px;
+        margin-top: 16px;
+        color: var(--muted);
+      }
+
+      .status[data-kind="error"] {
+        color: var(--danger);
+      }
+
+      @media (max-width: 720px) {
+        main {
+          margin: 24px auto;
+        }
+
+        .controls,
+        .metrics {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Plonk proof benchmark</h1>
+        <p>Run the test circuit in WebAssembly and measure proof generation and verification time in this browser.</p>
+      </header>
+
+      <section class="panel" aria-label="Proof benchmark">
+        <div class="controls">
+          <label>
+            Left
+            <input id="left" type="number" min="0" step="1" value="13">
+          </label>
+          <label>
+            Right
+            <input id="right" type="number" min="0" step="1" value="17">
+          </label>
+          <button id="prove" type="button" disabled>Compute and verify proof</button>
+        </div>
+
+        <div class="metrics" aria-live="polite">
+          <div class="metric">
+            <span>Proof time</span>
+            <strong id="proof-time">-</strong>
+          </div>
+          <div class="metric">
+            <span>Public product</span>
+            <strong id="product">-</strong>
+          </div>
+          <div class="metric">
+            <span>Verify time</span>
+            <strong id="verify-time">-</strong>
+          </div>
+          <div class="metric">
+            <span>Proof size</span>
+            <strong id="proof-size">-</strong>
+          </div>
+          <div class="metric">
+            <span>Rayon threads</span>
+            <strong id="thread-count">-</strong>
+          </div>
+        </div>
+
+        <div class="output">
+          <label>
+            Proof hex
+            <textarea id="proof" readonly spellcheck="false"></textarea>
+          </label>
+          <label>
+            Public inputs hex
+            <textarea id="public-inputs" readonly spellcheck="false"></textarea>
+          </label>
+        </div>
+
+        <p id="status" class="status"></p>
+      </section>
+    </main>
+
+    <script type="module">
+      import { hexToBytes, loadPlonkJs } from "../../plonkjs/src/index.mjs";
+
+      const wasmModulePath = new URL("../../plonkjs/dist/plonkwasm.js", import.meta.url);
+      const keysPath = new URL("../../target/integration-test-fixtures/test-keys.json", import.meta.url);
+      const proveButton = document.querySelector("#prove");
+      const leftInput = document.querySelector("#left");
+      const rightInput = document.querySelector("#right");
+      const proofTime = document.querySelector("#proof-time");
+      const verifyTime = document.querySelector("#verify-time");
+      const productOutput = document.querySelector("#product");
+      const proofSize = document.querySelector("#proof-size");
+      const threadCount = document.querySelector("#thread-count");
+      const proofOutput = document.querySelector("#proof");
+      const publicInputsOutput = document.querySelector("#public-inputs");
+      const statusOutput = document.querySelector("#status");
+
+      let plonkjsPromise;
+      let keysPromise;
+      let initPromise;
+      const textDecoder = new TextDecoder();
+
+      initPromise = initBenchmark();
+
+      proveButton.addEventListener("click", async () => {
+        proveButton.disabled = true;
+        statusOutput.dataset.kind = "";
+        statusOutput.textContent = "Preparing benchmark...";
+        proofTime.textContent = "-";
+        verifyTime.textContent = "-";
+        proofSize.textContent = "-";
+        threadCount.textContent = "-";
+        proofOutput.value = "";
+        publicInputsOutput.value = "";
+
+        try {
+          const left = readInteger(leftInput, "left");
+          const right = readInteger(rightInput, "right");
+          const plonkjs = await initPromise;
+          const seed = new Uint8Array(32).fill(9);
+          const seedBytes = allocateWasmBytes(plonkjs, seed);
+          let proofBytes;
+          let publicInputsBytes;
+          threadCount.textContent = String(plonkjs.threadPoolSize);
+
+          try {
+            statusOutput.textContent = "Computing proof...";
+            await new Promise((resolve) => requestAnimationFrame(resolve));
+
+            const startedAt = performance.now();
+            const proofPacked = plonkjs.exports.plonkweb_prove_bytes(
+              seedBytes.ptr,
+              seedBytes.len,
+              BigInt(left),
+              BigInt(right)
+            );
+            const elapsedMs = performance.now() - startedAt;
+            const proofResponse = decodePackedResponse(plonkjs, proofPacked);
+            const proof = proofFromResponse(proofResponse);
+
+            proofTime.textContent = `${elapsedMs.toFixed(2)} ms`;
+            productOutput.textContent = String(left * right);
+            proofSize.textContent = `${proof.proof.length} bytes`;
+            proofOutput.value = proof.proofHex;
+            publicInputsOutput.value = proof.publicInputsHex;
+
+            proofBytes = allocateWasmBytes(plonkjs, proof.proof);
+            publicInputsBytes = allocateWasmBytes(plonkjs, proof.publicInputs);
+
+            statusOutput.textContent = "Verifying proof...";
+            await new Promise((resolve) => requestAnimationFrame(resolve));
+
+            const verifyStartedAt = performance.now();
+            const verifyPacked = plonkjs.exports.plonkweb_verify_bytes(
+              proofBytes.ptr,
+              proofBytes.len,
+              publicInputsBytes.ptr,
+              publicInputsBytes.len
+            );
+            const verifyElapsedMs = performance.now() - verifyStartedAt;
+            const verifyResponse = decodePackedResponse(plonkjs, verifyPacked);
+
+            verifyTime.textContent = `${verifyElapsedMs.toFixed(2)} ms`;
+            statusOutput.textContent = verifyResponse.verified
+              ? "Proof computed and verified."
+              : "Proof computed but verification failed.";
+          } finally {
+            seedBytes.free();
+            proofBytes?.free();
+            publicInputsBytes?.free();
+          }
+        } catch (error) {
+          statusOutput.dataset.kind = "error";
+          statusOutput.textContent = error instanceof Error ? error.message : String(error);
+        } finally {
+          proveButton.disabled = false;
+        }
+      });
+
+      async function initBenchmark() {
+        statusOutput.dataset.kind = "";
+        statusOutput.textContent = "Initializing benchmark...";
+
+        try {
+          const [plonkjs, keys] = await Promise.all([loadPlonkjs(), loadKeys()]);
+          threadCount.textContent = String(plonkjs.threadPoolSize);
+          statusOutput.textContent = "Deserializing proving and verification keys...";
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+
+          const startedAt = performance.now();
+          await plonkjs.init(keys.proverKey, keys.verifierKey);
+          const elapsedMs = performance.now() - startedAt;
+
+          statusOutput.textContent = `Ready. Initialized in ${elapsedMs.toFixed(2)} ms.`;
+          proveButton.disabled = false;
+          return plonkjs;
+        } catch (error) {
+          statusOutput.dataset.kind = "error";
+          statusOutput.textContent = error instanceof Error ? error.message : String(error);
+          throw error;
+        }
+      }
+
+      function loadPlonkjs() {
+        plonkjsPromise ??= loadPlonkJs({
+          modulePath: wasmModulePath,
+          threads: true
+        });
+        return plonkjsPromise;
+      }
+
+      function loadKeys() {
+        keysPromise ??= fetch(keysPath).then(async (response) => {
+          if (!response.ok) {
+            throw new Error(
+              "Could not load test keys. Run `make serve-example` from the repo root."
+            );
+          }
+          const keys = await response.json();
+          const keysDir = new URL(".", keysPath);
+          const [proverKey, verifierKey] = await Promise.all([
+            fetchBytes(new URL(keys.prover_key_path, keysDir), "prover key"),
+            fetchBytes(new URL(keys.verifier_key_path, keysDir), "verifier key")
+          ]);
+          return { proverKey, verifierKey };
+        });
+        return keysPromise;
+      }
+
+      async function fetchBytes(url, name) {
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`Could not load ${name}. Run \`make serve-example\` from the repo root.`);
+        }
+        return new Uint8Array(await response.arrayBuffer());
+      }
+
+      function allocateWasmBytes(plonkjs, bytes) {
+        const ptr = plonkjs.exports.plonkweb_alloc(bytes.length);
+        new Uint8Array(plonkjs.memory.buffer, ptr, bytes.length).set(bytes);
+        return {
+          ptr,
+          len: bytes.length,
+          free() {
+            plonkjs.exports.plonkweb_free(ptr, bytes.length);
+          }
+        };
+      }
+
+      function decodePackedResponse(plonkjs, packed) {
+        packed = BigInt(packed);
+        const responsePtr = Number(packed >> 32n);
+        const responseLen = Number(packed & 0xffffffffn);
+        const responseBytes = new Uint8Array(plonkjs.memory.buffer, responsePtr, responseLen);
+        const responseJson = textDecoder.decode(copyIfShared(responseBytes));
+        plonkjs.exports.plonkweb_free(responsePtr, responseLen);
+
+        const response = JSON.parse(responseJson);
+        if (!response.ok) {
+          throw new Error(response.error ?? "wasm call failed");
+        }
+        return response.result;
+      }
+
+      function copyIfShared(bytes) {
+        if (typeof SharedArrayBuffer !== "undefined" && bytes.buffer instanceof SharedArrayBuffer) {
+          return bytes.slice();
+        }
+        return bytes;
+      }
+
+      function proofFromResponse(response) {
+        return {
+          proof: hexToBytes(response.proof_hex),
+          publicInputs: hexToBytes(response.public_inputs_hex),
+          proofHex: response.proof_hex,
+          publicInputsHex: response.public_inputs_hex
+        };
+      }
+
+      function readInteger(input, name) {
+        const value = Number(input.value);
+        if (!Number.isSafeInteger(value) || value < 0) {
+          throw new Error(`${name} must be a non-negative safe integer`);
+        }
+        return value;
+      }
+    </script>
+  </body>
+</html>

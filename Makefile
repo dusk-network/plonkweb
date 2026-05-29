@@ -1,8 +1,14 @@
-.PHONY: cq build-wasm build-wasm-raw build-wasm-rayon serve-example test test-rust test-js
+.PHONY: cq build-wasm build-wasm-raw build-wasm-rayon build-transfer-wasm-rayon serve-example test test-rust test-js
 
 WASM_ARTIFACT := target/wasm32-unknown-unknown/release/examples/test_circuit_wasm.wasm
+TRANSFER_WASM_ARTIFACT := target/wasm32-unknown-unknown/release/examples/transfer_wasm.wasm
 WASM_RAYON_MAX_MEMORY ?= 2147483648
+TRANSFER_WASM_RAYON_MAX_MEMORY ?= 4294967296
 WASM_RAYON_RUSTFLAGS := -C target-feature=+atomics,+bulk-memory -C link-arg=--shared-memory -C link-arg=--import-memory -C link-arg=--max-memory=$(WASM_RAYON_MAX_MEMORY) -C link-arg=--export=__heap_base -C link-arg=--export=__wasm_init_tls -C link-arg=--export=__tls_size -C link-arg=--export=__tls_align -C link-arg=--export=__tls_base
+TRANSFER_WASM_RAYON_RUSTFLAGS := -C target-feature=+atomics,+bulk-memory -C link-arg=--shared-memory -C link-arg=--import-memory -C link-arg=--max-memory=$(TRANSFER_WASM_RAYON_MAX_MEMORY) -C link-arg=--export=__heap_base -C link-arg=--export=__wasm_init_tls -C link-arg=--export=__tls_size -C link-arg=--export=__tls_align -C link-arg=--export=__tls_base
+TRANSFER_WASM_FEATURES ?= wasm-rayon
+TRANSFER_WASM_CARGO_ARGS ?=
+TRANSFER_WASM_OPT ?= 1
 EXAMPLE_PORT ?= 8000
 
 cq:
@@ -23,6 +29,12 @@ build-wasm-rayon:
 	mkdir -p plonkjs/dist
 	RUSTFLAGS="$(WASM_RAYON_RUSTFLAGS)" rustup run nightly cargo build -p plonk-integration-tests --release --target wasm32-unknown-unknown --example test_circuit_wasm --features wasm-rayon -Z build-std=panic_abort,std
 	wasm-bindgen --target web --out-dir plonkjs/dist --out-name plonkwasm --no-typescript --keep-lld-exports $(WASM_ARTIFACT)
+
+build-transfer-wasm-rayon:
+	mkdir -p transfer-wasm/dist
+	RUSTFLAGS="$(TRANSFER_WASM_RAYON_RUSTFLAGS)" rustup run nightly cargo $(TRANSFER_WASM_CARGO_ARGS) build --manifest-path transfer-wasm/Cargo.toml --target-dir target --release --target wasm32-unknown-unknown --example transfer_wasm --features "$(TRANSFER_WASM_FEATURES)" -Z build-std=panic_abort,std
+	wasm-bindgen --target web --out-dir transfer-wasm/dist --out-name transfer_wasm --no-typescript --keep-lld-exports $(TRANSFER_WASM_ARTIFACT)
+	if [ "$(TRANSFER_WASM_OPT)" = "1" ] && command -v wasm-opt >/dev/null 2>&1; then wasm-opt -O4 --enable-threads --enable-bulk-memory transfer-wasm/dist/transfer_wasm_bg.wasm -o transfer-wasm/dist/transfer_wasm_bg.wasm; fi
 
 serve-example: build-keys build-wasm
 	node integration-tests/example/server.mjs $(EXAMPLE_PORT)

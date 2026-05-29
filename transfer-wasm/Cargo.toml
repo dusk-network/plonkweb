@@ -1,0 +1,45 @@
+[package]
+name = "plonk-transfer-wasm"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+dusk-bytes = "0.1.7"
+dusk-core = { path = "/home/hein_/projects/rusk-private/core", features = ["zk"] }
+dusk-plonk = { version = "0.22.0-rc.0", default-features = false, features = ["legacy-proving", "rkyv-impl", "alloc"] }
+plonkwasm = { path = "../plonkwasm" }
+rand_chacha = "0.3"
+rand_core = "0.6"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.2", features = ["js"], optional = true }
+wasm-bindgen = "=0.2.121"
+wasm-bindgen-rayon = { version = "1.3", features = ["no-bundler"], optional = true }
+
+[features]
+default = []
+wasm-rayon = ["dusk-core/std", "dusk-plonk/std", "dep:getrandom", "dep:wasm-bindgen-rayon"]
+
+[[example]]
+name = "transfer_wasm"
+path = "example/transfer_wasm.rs"
+crate-type = ["cdylib"]
+test = false
+
+[profile.release]
+opt-level = 3
+lto = true
+panic = "abort"
+
+[patch.crates-io]
+dusk-plonk = { git = "ssh://git@github.com/dusk-network/plonk-private.git", branch = "browser-wasm-transfer-bench" }
+bls12_381-bls = { git = "https://github.com/dusk-network/bls12_381-bls-private.git", rev = "2bbf457d31d83df92f3afeca8e9fc72c3d33545b" }
+dusk-jubjub = { git = "https://github.com/dusk-network/jubjub-private.git", rev = "6e2b63f59edac8afa4f81a28b12d88529af37cdb" }
+jubjub-elgamal = { git = "https://github.com/dusk-network/jubjub-elgamal-private.git", rev = "1f0d481fb29282c69fdc0063a0404cb89a53bd10" }
+phoenix-core = { git = "https://github.com/dusk-network/phoenix-private.git", rev = "3d5b9838d7e824b441c93de9aaa38737263b97bd" }
+phoenix-circuits = { git = "https://github.com/dusk-network/phoenix-private.git", rev = "3d5b9838d7e824b441c93de9aaa38737263b97bd" }
+piecrust = { git = "https://github.com/dusk-network/piecrust-private.git", rev = "66ddb31693ffb0fd5a4faac3c80930e6228e0836" }
+piecrust-uplink = { git = "https://github.com/dusk-network/piecrust-private.git", rev = "66ddb31693ffb0fd5a4faac3c80930e6228e0836" }

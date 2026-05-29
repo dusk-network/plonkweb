@@ -175,6 +175,62 @@
         color: var(--danger);
       }
 
+      .loading-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 20;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background: rgb(17 21 26 / 0.54);
+      }
+
+      .loading-overlay[hidden] {
+        display: none;
+      }
+
+      .loading-popup {
+        width: min(360px, 100%);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface);
+        padding: 22px;
+        box-shadow: 0 18px 48px rgb(0 0 0 / 0.22);
+      }
+
+      .loading-popup h2 {
+        margin: 0 0 8px;
+        font-size: 1.1rem;
+        line-height: 1.25;
+        letter-spacing: 0;
+      }
+
+      .loading-content {
+        display: grid;
+        grid-template-columns: 32px minmax(0, 1fr);
+        gap: 14px;
+        align-items: center;
+      }
+
+      .loading-spinner {
+        width: 32px;
+        height: 32px;
+        border: 3px solid var(--line);
+        border-top-color: var(--accent);
+        border-radius: 999px;
+        animation: spin 0.9s linear infinite;
+      }
+
+      .loading-popup p {
+        font-size: 0.94rem;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
       @media (max-width: 720px) {
         main {
           margin: 24px auto;
@@ -245,6 +301,27 @@
       </section>
     </main>
 
+    <div
+      id="loading"
+      class="loading-overlay"
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      aria-labelledby="loading-title"
+      aria-describedby="loading-message"
+      hidden
+    >
+      <div class="loading-popup">
+        <div class="loading-content">
+          <div class="loading-spinner" aria-hidden="true"></div>
+          <div>
+            <h2 id="loading-title">Loading</h2>
+            <p id="loading-message">Please wait.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <script type="module">
       import { hexToBytes, loadPlonkJs } from "../../plonkjs/src/index.mjs";
 
@@ -261,6 +338,9 @@
       const proofOutput = document.querySelector("#proof");
       const publicInputsOutput = document.querySelector("#public-inputs");
       const statusOutput = document.querySelector("#status");
+      const loadingOverlay = document.querySelector("#loading");
+      const loadingTitle = document.querySelector("#loading-title");
+      const loadingMessage = document.querySelector("#loading-message");
 
       let plonkjsPromise;
       let keysPromise;
@@ -292,7 +372,10 @@
 
           try {
             statusOutput.textContent = "Computing proof...";
-            await new Promise((resolve) => requestAnimationFrame(resolve));
+            await showLoading(
+              "Computing proof",
+              "Please wait while the proof is computed in WebAssembly."
+            );
 
             const startedAt = performance.now();
             const proofPacked = plonkjs.exports.plonkweb_prove_bytes(
@@ -315,7 +398,10 @@
             publicInputsBytes = allocateWasmBytes(plonkjs, proof.publicInputs);
 
             statusOutput.textContent = "Verifying proof...";
-            await new Promise((resolve) => requestAnimationFrame(resolve));
+            await showLoading(
+              "Verifying proof",
+              "Please wait while the generated proof is verified."
+            );
 
             const verifyStartedAt = performance.now();
             const verifyPacked = plonkjs.exports.plonkweb_verify_bytes(
@@ -340,6 +426,7 @@
           statusOutput.dataset.kind = "error";
           statusOutput.textContent = error instanceof Error ? error.message : String(error);
         } finally {
+          hideLoading();
           proveButton.disabled = false;
         }
       });
@@ -347,12 +434,19 @@
       async function initBenchmark() {
         statusOutput.dataset.kind = "";
         statusOutput.textContent = "Initializing benchmark...";
+        await showLoading(
+          "Loading keys",
+          "Please wait while the proving and verification keys are loaded."
+        );
 
         try {
           const [plonkjs, keys] = await Promise.all([loadPlonkjs(), loadKeys()]);
           threadCount.textContent = String(plonkjs.threadPoolSize);
           statusOutput.textContent = "Deserializing proving and verification keys...";
-          await new Promise((resolve) => requestAnimationFrame(resolve));
+          await showLoading(
+            "Loading keys into memory",
+            "Please wait while the keys are initialized in WebAssembly memory."
+          );
 
           const startedAt = performance.now();
           await plonkjs.init(keys.proverKey, keys.verifierKey);
@@ -365,7 +459,22 @@
           statusOutput.dataset.kind = "error";
           statusOutput.textContent = error instanceof Error ? error.message : String(error);
           throw error;
+        } finally {
+          hideLoading();
         }
+      }
+
+      function showLoading(title, message) {
+        loadingTitle.textContent = title;
+        loadingMessage.textContent = message;
+        loadingOverlay.hidden = false;
+        return new Promise((resolve) => {
+          requestAnimationFrame(() => setTimeout(resolve, 0));
+        });
+      }
+
+      function hideLoading() {
+        loadingOverlay.hidden = true;
       }
 
       function loadPlonkjs() {

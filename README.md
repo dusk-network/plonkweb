@@ -40,6 +40,10 @@ Run only the Rust tests:
 make test-rust
 ```
 
+The repository's tests and example select `dusk-plonk`'s `bls-backend-blst`
+backend. Downstream `plonkwasm` consumers should select exactly one backend
+feature: `bls-backend-blst` or `bls-backend-dusk`.
+
 Build the raw wasm artifact used by Node tests:
 
 ```sh
